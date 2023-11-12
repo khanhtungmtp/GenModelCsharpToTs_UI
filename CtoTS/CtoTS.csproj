@@ -13,7 +13,6 @@
 	  <Description>Convert model C# to Typescript</Description>
 	  <SelfContained>true</SelfContained>
 	  <ApplicationIcon>icon.ico</ApplicationIcon>
-	  <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
 
