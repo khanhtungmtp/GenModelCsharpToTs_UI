@@ -169,6 +169,7 @@ namespace CtoTS
             Name = "AppCToTS";
             StartPosition = FormStartPosition.CenterScreen;
             Text = "Csharp to Typescript";
+            Load += AppCToTS_Load;
             ((System.ComponentModel.ISupportInitialize)pictureBox1).EndInit();
             ResumeLayout(false);
             PerformLayout();

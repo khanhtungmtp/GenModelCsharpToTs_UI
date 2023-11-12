@@ -1,6 +1,8 @@
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 
 
@@ -12,12 +14,17 @@ namespace CtoTS
         {
             InitializeComponent();
             btnCopy.Enabled = false;
+            // Assuming inputTextBoxCsharp is a Scintilla control
+            inputTextBoxCsharp.TextChanged += inputTextBoxCsharp_TextChanged;
+
+            // Initial check and update button visibility
+            UpdateButtonVisibility();
         }
 
         private void btnGen_Click(object sender, EventArgs e)
         {
             // Lấy đường dẫn đến thư mục chứa tệp tin thực thi của ứng dụng
-            string assemblyLocation = System.AppContext.BaseDirectory;
+            string assemblyLocation = AppContext.BaseDirectory;
 
             // Tạo đường dẫn đầy đủ đến tệp tin tạm thời C#
             string tempCSharpFilePath = Path.Combine(assemblyLocation, "TempAssembly", "TempCSharpFile.cs");
@@ -44,29 +51,48 @@ namespace CtoTS
             var semanticModel = compilation.GetSemanticModel(syntaxTree);
 
             var root = syntaxTree.GetRoot();
-            var classDeclaration = root.DescendantNodes().OfType<ClassDeclarationSyntax>().FirstOrDefault();
-            if (classDeclaration == null)
+            // Create a list to store TypeScript interfaces for all classes
+            List<string> tsInterfaces = new();
+            List<string> tsclassName = new();
+
+            // Loop through all class declarations in the syntax tree
+            foreach (var classDeclaration in root.DescendantNodes().OfType<ClassDeclarationSyntax>())
             {
-                MessageBox.Show("Không tìm thấy class C# trong mã nguồn!");
+                // Get the original C# code for the current class
+                var classSyntax = classDeclaration.SyntaxTree.GetRoot().FindNode(classDeclaration.Span);
+                string cSharpCodeForClass = classSyntax.ToFullString();
+
+                string className = classDeclaration.Identifier.Text;
+                tsclassName.Add(className);
+                CodeConverter codeConverter = new();
+                string tsInterface = codeConverter.ConvertCSharpClassToTypeScriptInterface(className, cSharpCodeForClass);
+
+                // Add the TypeScript interface to the list
+                tsInterfaces.Add(tsInterface);
+            }
+            if (!tsclassName.Any())
+            {
+                MessageBox.Show($"Class name not found", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
-            string className = classDeclaration.Identifier.Text;
-            CodeConverter codeConverter = new();
-            string tsInterface = codeConverter.ConvertCSharpClassToTypeScriptInterface(className, semanticModel.SyntaxTree.ToString());
+            // Combine all TypeScript interfaces into a single string
+            string combinedInterfaces = string.Join("\n\n", tsInterfaces);
 
             // Lưu nội dung vào tệp tin .ts
             string folderTypeScipt = Path.Combine(Directory.GetCurrentDirectory(), "Models");
             CreateDirectoryIfNotExists(folderTypeScipt);
-            string outputTypescriptPath = Path.Combine(folderTypeScipt, $"{className.ToLower()}.ts");
-            File.WriteAllText(outputTypescriptPath, tsInterface);
-            inputTextBoxTypescript.Text = tsInterface;
+            string nameFileOutput = CodeConverter.ConvertFirstCharToLowerCase(tsclassName[0]);
+            string outputTypescriptPath = Path.Combine(folderTypeScipt, $"{nameFileOutput}.ts");
+            File.WriteAllText(outputTypescriptPath, combinedInterfaces);
+            inputTextBoxTypescript.Text = combinedInterfaces;
             if (inputTextBoxTypescript.Text != null)
             {
                 btnCopy.Enabled = true;
                 btnCopy.Text = "Copy";
             }
-            MessageBox.Show($"TypeScript interface saved to: {className.ToLower()}.ts", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show($"TypeScript interface saved to: {nameFileOutput}.ts", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
         }
 
         private void CreateDirectoryIfNotExists(string path)
@@ -106,6 +132,50 @@ namespace CtoTS
         {
             Clipboard.SetText(inputTextBoxTypescript.Text);
             btnCopy.Text = "Copied";
+        }
+
+        private void inputTextBoxCsharp_Click(object sender, EventArgs e)
+        {
+
+        }
+
+        private void inputTextBoxCsharp_TextChanged(object sender, EventArgs e)
+        {
+            UpdateButtonVisibility();
+        }
+
+        private void UpdateButtonVisibility()
+        {
+            // Set btnGen.Enabled based on inputTextBoxCsharp.Text
+            btnGen.Enabled = !string.IsNullOrEmpty(inputTextBoxCsharp.Text);
+        }
+
+        private void AppCToTS_Load(object sender, EventArgs e)
+        {
+            CenterToScreen();
+            if (IsAppAlreadyRunning())
+            {
+                // mo lai ung dung neu dang chay
+                Process currentProcess = Process.GetCurrentProcess();
+                Process[] processes = Process.GetProcessesByName(currentProcess.ProcessName);
+                foreach (Process process in processes)
+                {
+                    if (process.Id != currentProcess.Id)
+                    {
+                        NativeMethods.SetForegroundWindow(process.MainWindowHandle);
+                        break;
+                    }
+                }
+
+                this.Close(); // Đóng form hiện tại
+            }
+        }
+
+        private bool IsAppAlreadyRunning()
+        {
+            Process currentProcess = Process.GetCurrentProcess();
+            Process[] processes = Process.GetProcessesByName(currentProcess.ProcessName);
+            return processes.Length > 1;
         }
     }
 
@@ -177,7 +247,7 @@ namespace CtoTS
             return input;
         }
 
-        static string ConvertFirstCharToLowerCase(string input)
+        public static string ConvertFirstCharToLowerCase(string input)
         {
             if (!string.IsNullOrWhiteSpace(input))
             {
@@ -243,6 +313,7 @@ namespace CtoTS
             return $"{tsPropertyName}: {tsType};";
         }
 
+        // Modify the ConvertCSharpClassToTypeScriptInterface method
         public string ConvertCSharpClassToTypeScriptInterface(string className, string csharpClass)
         {
             // Phân tách các dòng trong mã nguồn C#
@@ -273,5 +344,13 @@ namespace CtoTS
 
             return tsInterface;
         }
+
+    }
+
+    public class NativeMethods
+    {
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool SetForegroundWindow(IntPtr hWnd);
     }
 }
