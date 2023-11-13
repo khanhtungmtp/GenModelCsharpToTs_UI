@@ -23,76 +23,74 @@ namespace CtoTS
 
         private void btnGen_Click(object sender, EventArgs e)
         {
-            // Lấy đường dẫn đến thư mục chứa tệp tin thực thi của ứng dụng
-            string assemblyLocation = AppContext.BaseDirectory;
-
-            // Tạo đường dẫn đầy đủ đến tệp tin tạm thời C#
-            string tempCSharpFilePath = Path.Combine(assemblyLocation, "TempAssembly", "TempCSharpFile.cs");
-
-            // Kiểm tra xem thư mục TempAssembly có tồn tại không
-            string tempAssemblyDirectory = Path.Combine(assemblyLocation, "TempAssembly");
-            if (!Directory.Exists(tempAssemblyDirectory))
-            {
-                Directory.CreateDirectory(tempAssemblyDirectory);
-            }
-
-            // Lấy nội dung từ RichTextBox
+            // Get the C# code from the RichTextBox
             string cSharpCode = inputTextBoxCsharp.Text;
 
-            // Tạo một tạm thời C# source file
-            File.WriteAllText(tempCSharpFilePath, cSharpCode);
-
-            // Sử dụng Roslyn để biên dịch và đọc class C#
+            // Use Roslyn to compile and read the C# class
             var syntaxTree = CSharpSyntaxTree.ParseText(cSharpCode);
+
+            // Get the application's base directory
+            string assemblyLocation = AppContext.BaseDirectory;
+
+            // Get the path to System.Private.CoreLib.dll
+            var coreLibPath = Path.Combine(assemblyLocation, "System.Private.CoreLib.dll");
+
             var compilation = CSharpCompilation.Create("TempAssembly")
-                  .AddReferences(MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
-                    .AddSyntaxTrees(syntaxTree);
+                .AddReferences(MetadataReference.CreateFromFile(coreLibPath))
+                .AddSyntaxTrees(syntaxTree);
 
-            var semanticModel = compilation.GetSemanticModel(syntaxTree);
 
-            var root = syntaxTree.GetRoot();
             // Create a list to store TypeScript interfaces for all classes
             List<string> tsInterfaces = new();
-            List<string> tsclassName = new();
+            List<string> tsClassNames = new();
 
             // Loop through all class declarations in the syntax tree
-            foreach (var classDeclaration in root.DescendantNodes().OfType<ClassDeclarationSyntax>())
+            foreach (var classDeclaration in syntaxTree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>())
             {
                 // Get the original C# code for the current class
                 var classSyntax = classDeclaration.SyntaxTree.GetRoot().FindNode(classDeclaration.Span);
                 string cSharpCodeForClass = classSyntax.ToFullString();
 
                 string className = classDeclaration.Identifier.Text;
-                tsclassName.Add(className);
-                CodeConverter codeConverter = new();
+                tsClassNames.Add(className);
+
+                // Convert the C# class to TypeScript interface
+                CodeConverter codeConverter = new CodeConverter();
                 string tsInterface = codeConverter.ConvertCSharpClassToTypeScriptInterface(className, cSharpCodeForClass);
 
                 // Add the TypeScript interface to the list
                 tsInterfaces.Add(tsInterface);
             }
-            if (!tsclassName.Any())
+
+            // Check if any class names were found
+            if (!tsClassNames.Any())
             {
-                MessageBox.Show($"Class name not found", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("Class name not found", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
             // Combine all TypeScript interfaces into a single string
             string combinedInterfaces = string.Join("\n\n", tsInterfaces);
 
-            // Lưu nội dung vào tệp tin .ts
-            string folderTypeScipt = Path.Combine(Directory.GetCurrentDirectory(), "Models");
-            CreateDirectoryIfNotExists(folderTypeScipt);
-            string nameFileOutput = CodeConverter.ConvertFirstCharToLowerCase(tsclassName[0]);
-            string outputTypescriptPath = Path.Combine(folderTypeScipt, $"{nameFileOutput}.ts");
-            File.WriteAllText(outputTypescriptPath, combinedInterfaces);
-            inputTextBoxTypescript.Text = combinedInterfaces;
-            if (inputTextBoxTypescript.Text != null)
-            {
-                btnCopy.Enabled = true;
-                btnCopy.Text = "Copy";
-            }
-            MessageBox.Show($"TypeScript interface saved to: {nameFileOutput}.ts", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            // Create a directory for TypeScript files
+            string folderTypeScript = Path.Combine(Directory.GetCurrentDirectory(), "Models");
+            CreateDirectoryIfNotExists(folderTypeScript);
 
+            // Determine the output TypeScript file name
+            string nameFileOutput = CodeConverter.ConvertFirstCharToLowerCase(tsClassNames[0]);
+
+            // Create the full path for the TypeScript output file
+            string outputTypeScriptPath = Path.Combine(folderTypeScript, $"{nameFileOutput}.ts");
+
+            // Write the TypeScript interfaces to the output file
+            File.WriteAllText(outputTypeScriptPath, combinedInterfaces);
+            inputTextBoxTypescript.Text = combinedInterfaces;
+
+            // Enable the Copy button
+            btnCopy.Enabled = true;
+            btnCopy.Text = "Copy";
+
+            MessageBox.Show($"TypeScript interface saved to: {nameFileOutput}.ts", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private void CreateDirectoryIfNotExists(string path)
@@ -222,7 +220,10 @@ namespace CtoTS
 
             if (parts.Length > 1)
             {
-                parts[0] = ConvertLastCharToLowerCase(parts[0]);
+                if (parts[0].Length < 2)
+                    parts[0] = parts[0].ToLower();
+                else
+                    parts[0] = ConvertLastCharToLowerCase(parts[0]);
                 // Ghép các phần lại thành chuỗi mới
                 return string.Join("_", parts);
             }
